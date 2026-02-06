@@ -7,7 +7,9 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/worker.js",
+    "dev": "nodemon src/worker.js",
+    "test": "jest --detectOpenHandles"
   },
   "keywords": [],
   "author": "",
