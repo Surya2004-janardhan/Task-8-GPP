@@ -1,10 +1,10 @@
 const Activity = require('../models/Activity');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const processActivity = async (data) => {
     try {
         const activity = new Activity({
-            id: uuidv4(),
+            id: crypto.randomUUID(),
             userId: data.userId,
             eventType: data.eventType,
             timestamp: new Date(data.timestamp),
