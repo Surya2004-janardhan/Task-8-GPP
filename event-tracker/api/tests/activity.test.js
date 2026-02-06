@@ -1,11 +1,12 @@
-const request = require('supertest');
-const app = require('../src/server');
 const { publishToQueue } = require('../src/services/queueService');
 
 jest.mock('../src/services/queueService', () => ({
     publishToQueue: jest.fn().mockResolvedValue(true),
     connectQueue: jest.fn().mockResolvedValue(true)
 }));
+
+const request = require('supertest');
+const app = require('../src/server');
 
 describe('Activity API', () => {
     const validActivity = {
