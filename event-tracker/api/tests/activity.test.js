@@ -10,7 +10,7 @@ const app = require('../src/server');
 
 describe('Activity API', () => {
     const validActivity = {
-        userId: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+        userId: 'a1b2c3d4-e5f6-4890-8234-567890abcdef',
         eventType: 'user_login',
         timestamp: '2023-10-27T10:00:00Z',
         payload: {
