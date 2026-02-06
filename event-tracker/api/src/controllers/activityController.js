@@ -2,9 +2,9 @@ const Joi = require('joi');
 const { publishToQueue } = require('../services/queueService');
 
 const activitySchema = Joi.object({
-    userId: Joi.string().guid().required(),
+    userId: Joi.string().uuid().required(),
     eventType: Joi.string().min(1).required(),
-    timestamp: Joi.string().isoDate().required(),
+    timestamp: Joi.date().iso().required(),
     payload: Joi.object().required()
 });
 
