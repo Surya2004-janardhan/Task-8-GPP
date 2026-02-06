@@ -15,8 +15,7 @@ const ingestActivity = async (req, res) => {
         if (error) {
             return res.status(400).json({
                 error: 'Bad Request',
-                message: error.details[0].message,
-                details: error.details
+                message: error.details[0].message
             });
         }
 
