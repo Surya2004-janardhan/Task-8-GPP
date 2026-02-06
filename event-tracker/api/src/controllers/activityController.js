@@ -13,6 +13,7 @@ const ingestActivity = async (req, res) => {
         const { error, value } = activitySchema.validate(req.body);
         
         if (error) {
+            console.log('Validation Error:', error.details);
             return res.status(400).json({
                 error: 'Bad Request',
                 message: error.details[0].message
