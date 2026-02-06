@@ -10,7 +10,7 @@ const app = require('../src/server');
 
 describe('Activity API', () => {
     const validActivity = {
-        userId: 'a1b2c3d4-e5f6-4890-8234-567890abcdef',
+        userId: require('crypto').randomUUID(),
         eventType: 'user_login',
         timestamp: '2023-10-27T10:00:00Z',
         payload: {
@@ -29,6 +29,7 @@ describe('Activity API', () => {
             .post('/api/v1/activities')
             .send(validActivity);
 
+        if (response.status !== 202) console.log('Response Error:', response.body);
         expect(response.status).toBe(202);
         expect(response.body.message).toBe('Event successfully received and queued');
         expect(publishToQueue).toHaveBeenCalledWith(validActivity);

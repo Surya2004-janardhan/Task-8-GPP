@@ -2,7 +2,7 @@ const Joi = require('joi');
 const { publishToQueue } = require('../services/queueService');
 
 const activitySchema = Joi.object({
-    userId: Joi.string().required(),
+    userId: Joi.string().guid().required(),
     eventType: Joi.string().min(1).required(),
     timestamp: Joi.string().isoDate().required(),
     payload: Joi.object().required()
@@ -13,10 +13,10 @@ const ingestActivity = async (req, res) => {
         const { error, value } = activitySchema.validate(req.body);
         
         if (error) {
-            console.log('Validation Error:', error.details);
             return res.status(400).json({
                 error: 'Bad Request',
-                message: error.details[0].message
+                message: error.details[0].message,
+                details: error.details
             });
         }
 
