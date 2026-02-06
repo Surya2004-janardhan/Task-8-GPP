@@ -1,0 +1,211 @@
+Objective
+This task requires you to build an event-driven microservice for tracking user activities. You will develop a REST API that serves as an ingestion point, publishing activity events to a RabbitMQ message queue. Concurrently, a separate worker service will consume these events from the queue for asynchronous processing and persistent storage. The API will also incorporate robust IP-based rate limiting to protect against abuse and ensure service stability. Through this project, you will gain practical experience with event-driven architecture, message queueing with RabbitMQ, asynchronous processing patterns, API rate limiting strategies, multi-service Docker deployments, and robust error handling in distributed systems. These skills are crucial for building scalable, resilient, and performant backend systems common in modern tech companies.
+
+Description
+Background
+Many modern applications need to track user interactions and activities for analytics, auditing, and triggering downstream processes. Building a robust, scalable, and resilient activity tracking system is a common challenge. This task simulates a real-world scenario where high-volume event data needs to be ingested, processed asynchronously, and stored reliably, while protecting the ingestion endpoint from abuse. Mastering these patterns is fundamental for any developer aiming for high-impact roles in scalable systems.
+
+Implementation Guidelines
+Backend Architecture
+Design a clear separation of concerns between the API gateway (responsible for ingestion and rate limiting) and the asynchronous processing worker (responsible for consuming and persisting events). This microservice approach enhances scalability and fault tolerance.
+
+Event-Driven Pattern
+Leverage RabbitMQ to decouple the API from the consumer, ensuring that event ingestion is fast and resilient, even if the processing worker is temporarily unavailable. Implement durable queues and proper acknowledgment mechanisms for message reliability, preventing data loss in transient failures.
+
+Rate Limiting
+Implement an efficient rate-limiting strategy (e.g., using an in-memory map for simplicity or a library, or consider adding Redis for a more production-ready solution if time permits). Aim for a robust algorithm like sliding window or token bucket to ensure fairness and prevent denial-of-service attacks.
+
+Data Persistence
+Choose either MongoDB or MySQL to store the processed activity events. Design a simple, flexible schema that accurately captures all necessary event details, including the original event data and processing metadata.
+
+Error Handling
+Implement comprehensive error handling in both the API (for invalid input, rate limits, message queueing failures) and the consumer (for message parsing errors, database errors, and transient issues). Use appropriate HTTP status codes for the API to provide clear feedback to clients.
+
+Containerization
+The entire application must be containerized using Docker. A docker-compose.yml file should orchestrate all services: the API, the consumer, RabbitMQ, and your chosen database. This ensures a consistent and reproducible development and deployment environment.
+
+Implementation Details
+Project Structure
+/event-tracker
+├── api/
+│   ├── src/
+│   │   ├── controllers/activityController.js
+│   │   ├── middlewares/rateLimiter.js
+│   │   ├── routes/activityRoutes.js
+│   │   └── server.js
+│   ├── Dockerfile
+│   └── package.json
+├── consumer/
+│   ├── src/
+│   │   ├── services/activityProcessor.js
+│   │   └── worker.js
+│   ├── Dockerfile
+│   └── package.json
+├── docker-compose.yml
+├── .env.example
+├── README.md
+└── API_DOCS.md # Or OpenAPI spec
+API Endpoints
+POST /api/v1/activities:
+Description: Ingests a user activity event.
+Request Body Example:
+{
+    "userId": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    "eventType": "user_login",
+    "timestamp": "2023-10-27T10:00:00Z",
+    "payload": {
+        "ipAddress": "192.168.1.1",
+        "device": "desktop",
+        "browser": "Chrome"
+    }
+}
+Responses:
+202 Accepted: Event successfully received and queued.
+400 Bad Request: Invalid input payload.
+429 Too Many Requests: Rate limit exceeded, includes Retry-After header.
+RabbitMQ Integration
+Queue Name: user_activities (Durable queue recommended).
+Message Format (JSON string): Must match the API payload structure. Ensure JSON.stringify() on publish and JSON.parse() on consume.
+API Service: Connects to RabbitMQ, asserts the queue, and publishes messages. Implement error handling for connection/publish failures.
+Consumer Service: Connects to RabbitMQ, asserts the queue, and consumes messages. Crucially, implement proper message acknowledgment (channel.ack(message)) after successful processing and error handling (channel.nack(message) with requeue option on failure).
+Rate Limiting
+Location: Implement as a middleware in the API service.
+Logic: Limit of 50 requests per 60 seconds per unique client IP address.
+Response: 429 Too Many Requests with a Retry-After header indicating seconds remaining until the next request is allowed.
+Database Schema (Example for MongoDB)
+// activitySchema.js (for MongoDB with Mongoose)
+const activitySchema = new mongoose.Schema({
+    id: { type: String, unique: true, required: true }, // Ensure uniqueness, e.g., generated UUID for each event
+    userId: { type: String, required: true, index: true },
+    eventType: { type: String, required: true },
+    timestamp: { type: Date, required: true }, // Original event timestamp
+    processedAt: { type: Date, default: Date.now }, // When consumer processed it
+    payload: { type: mongoose.Schema.Types.Mixed } // Stores any JSON object
+}, { timestamps: true }); // Adds createdAt and updatedAt
+
+// For MySQL, consider a similar structure with VARCHAR(255) for userId/eventType, DATETIME for timestamps,
+// TEXT or JSON type for payload (if supported, else TEXT and JSON.stringify/parse).
+docker-compose.yml Template
+version: '3.8'
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  database: # Choose either mongodb or mysql
+    image: mongo:latest # Use 'mysql:8' for MySQL
+    ports:
+      - "27017:27017" # Use "3306:3306" for MySQL
+    volumes:
+      - db_data:/data/db # Use 'db_data:/var/lib/mysql' for MySQL
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: user # For MySQL: MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: activity_db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })", "activity_db"] # For MySQL: "mysqladmin", "ping", "-h", "localhost", "-uuser", "-ppassword"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: mongodb://user:password@database:27017/activity_db?authSource=admin # Adjust for MySQL
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 50
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"] # Implement a /health endpoint in your API
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  consumer:
+    build: ./consumer
+    environment:
+      NODE_ENV: development
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      DATABASE_URL: mongodb://user:password@database:27017/activity_db?authSource=admin # Adjust for MySQL
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  db_data:
+Environment Variables (.env.example)
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+DATABASE_URL=mongodb://user:password@localhost:27017/activity_db?authSource=admin # Adjust for MySQL
+API_PORT=3000
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=50
+Testing
+API Service: Use a testing framework like Jest or Mocha with Supertest for HTTP endpoint testing. For unit tests, mock the RabbitMQ publisher client to isolate API logic.
+Consumer Service: Use Jest or Mocha to test message parsing, processing, and database insertion logic. Mock database interactions to isolate consumer logic.
+Test Invocation: Your README.md should clearly specify how to run tests, e.g., docker-compose exec api npm test and docker-compose exec consumer npm test.
+Submission Instructions
+Submit your work by providing a link to a public GitHub repository. Your repository MUST include the following:
+
+Your complete application code (source files for both the api and consumer services).
+A comprehensive README.md file at the root of your repository. This file must cover project setup, how to run the application using Docker Compose, how to run tests, detailed API endpoints with examples, and a brief overview of your architectural decisions. Include screenshots of the RabbitMQ management UI (http://localhost:15672) showing message queues and any other relevant output.
+A functional docker-compose.yml file that orchestrates all services (API, consumer, RabbitMQ, and your chosen database) and allows for a 'one-command setup'.
+A .env.example file documenting all required environment variables.
+Individual Dockerfiles for both your API and consumer services.
+A tests/ directory within each service containing unit and integration tests.
+An API_DOCS.md file (or an OpenAPI/Swagger JSON/YAML specification) detailing the API endpoints, request/response schemas, and error codes.
+Optional (Bonus) Artifacts:
+
+A Postman collection or curl examples demonstrating how to interact with your API.
+Detailed architecture diagrams (e.g., using Mermaid.js in ARCHITECTURE.md).
+Performance test results for the rate limiter, demonstrating its effectiveness under load.
+Evaluation Overview
+Your submission will be rigorously evaluated for its functionality, adherence to an event-driven pattern, correct implementation of rate limiting, and overall code quality. We will run automated tests to verify API behavior, message queuing, data persistence, and error handling. Your code will also undergo automated code analysis for best practices, security, maintainability, and adherence to the specified architecture. Expert reviewers will assess the clarity and completeness of your documentation, the effectiveness of your system design, and your answers to the submission questionnaire, particularly focusing on your engineering judgment and architectural rationale. Ensuring a robust docker-compose.yml setup and clear test instructions is crucial for a smooth evaluation process.
+
+Common Mistakes To Avoid
+Failing to implement proper message acknowledgment (ack) in the consumer, which can lead to message reprocessing or loss.
+Incomplete or incorrect docker-compose.yml configuration, preventing the application from starting reliably with a single command.
+Lack of robust input validation on API endpoints, making the service vulnerable to malformed data.
+Incorrect or inefficient implementation of rate limiting, either being too permissive (allowing abuse) or too restrictive (blocking legitimate users).
+Hardcoding sensitive information (database credentials, RabbitMQ URLs) directly in the code instead of using environment variables.
+Insufficient error handling in either the API service or the consumer, leading to unhandled exceptions or silent failures.
+Poorly structured or missing test cases for critical logic, especially for API endpoints, message publishing, and consumer processing.
+Vague, incomplete, or outdated documentation in README.md or API_DOCS.md.
+Not implementing a /health endpoint for the API service, which is crucial for Docker Compose health checks.
+FAQ
+Q: Which database should I use (MongoDB or MySQL)? A: You have the flexibility to choose either MongoDB or MySQL, based on your preference and comfort level. Ensure your docker-compose.yml and service configurations reflect your choice accurately.
+Q: How should I implement rate limiting? A: You can use an in-memory solution (e.g., a JavaScript Map for Node.js) or integrate a third-party library for basic implementation. For a more robust, distributed solution, you could optionally add a Redis service to your docker-compose.yml to store rate limit states, though this is not strictly required.
+Q: Do I need to build a frontend user interface for this task? A: No, this task is purely backend-focused. The primary interface for interaction will be the REST API, which you can test using tools like Postman, curl, or your provided automated tests.
+Q: How can I effectively test the RabbitMQ integration without tightly coupling tests? A: For unit tests, you can mock the RabbitMQ client to verify that your API logic correctly attempts to publish messages. For integration tests, ensure your docker-compose.yml includes a running RabbitMQ instance and perform actual message publishing and consumption, verifying the end-to-end flow.
+Q: What if I have multiple, varying types of payload objects for different events? A: The payload field in both your API schema and database should be flexible enough to store any valid JSON object. In MongoDB, this is straightforward with a Mixed type. In MySQL, you might use a JSON column type (if available) or a TEXT column to store stringified JSON.
+Q: Is idempotency required for the consumer service? A: While not a core requirement for this specific task, considering and documenting how you would handle duplicate messages (e.g., by including a unique event ID and checking for its existence before processing) demonstrates advanced understanding and could be a bonus point opportunity.
+Core Requirements
+POST /api/v1/activities endpoint accepts JSON payload with fields: 'userId' (string, e.g., UUID), 'eventType' (non-empty string), 'timestamp' (valid ISO-8601 string), and 'payload' (JSON object).2. POST /api/v1/activities returns 202 Accepted status upon successful validation and message queuing.3. POST /api/v1/activities performs input validation for all fields; invalid requests receive 400 Bad Request status with descriptive error messages.4. Upon successful validation, the API service publishes the received activity event as a JSON message to a RabbitMQ queue named 'user_activities'.5. The API service implements IP-based rate limiting, allowing a maximum of 50 requests per minute per unique IP address.6. Requests exceeding the rate limit receive a 429 Too Many Requests status code with a 'Retry-After' header indicating the time in seconds until the limit resets.7. A separate consumer service connects to RabbitMQ and continuously consumes messages from the 'user_activities' queue, implementing proper message acknowledgment (ACK).8. The consumer service successfully parses each activity message and stores its details into a configured database (MongoDB or MySQL).9. The database schema for stored activities includes fields for 'id', 'userId', 'eventType', 'timestamp', 'processedAt' (timestamp of processing), and 'payload' (JSON/document type).10. The entire application, including the API service, consumer service, RabbitMQ, and the chosen database, is runnable via a single 'docker-compose up' command.11. All sensitive configurations (e.g., database connection strings, RabbitMQ credentials) for both API and consumer services are managed via environment variables.12. Unit tests are provided for key API validation logic and RabbitMQ message publishing within the API service.13. Unit tests are provided for the consumer service's message parsing, processing, and database insertion logic.14. A comprehensive README.md file documents the project setup, how to run, how to test, API endpoints with examples, and key architecture decisions.15. API endpoints are clearly documented using a separate API_DOCS.md file or an OpenAPI/Swagger specification.
+
+
+
+
+
+Evaluation Overview
+Your submission will be rigorously evaluated for its functionality, adherence to an event-driven pattern, correct implementation of rate limiting, and overall code quality. We will run automated tests to verify API behavior, message queuing, and data persistence. Your code will also undergo automated code analysis for best practices, security, maintainability, and adherence to the specified architecture. Expert reviewers will assess the clarity and completeness of your documentation, the effectiveness of your system design, and your answers to the submission questionnaire, particularly focusing on your engineering judgment and architectural rationale. Ensuring a robust docker-compose.yml setup and clear test instructions is crucial for a smooth evaluation process.
+
